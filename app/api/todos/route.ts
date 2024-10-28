@@ -1,11 +1,13 @@
+// pages/api/todos/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]/route";
 import dbConnect from "@/lib/dbConnect";
 import Todo from "@/models/Todo";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
+
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -19,40 +21,48 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
+  const { text, createdAt } = await request.json();
+
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { text } = await request.json();
   await dbConnect();
-  const todo = await Todo.create({ text, user: session.user.email });
+  const todo = await Todo.create({ text, user: session.user.email, createdAt });
   return NextResponse.json(todo);
 }
 
 export async function PUT(request: NextRequest) {
   const session = await getServerSession(authOptions);
+  const { id, text, completed } = await request.json();
+
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { id, text, completed } = await request.json();
   await dbConnect();
-  const todo = await Todo.findOneAndUpdate(
-    { _id: id, user: session.user.email },
-    { text, completed },
-    { new: true }
-  );
+  const todo = await Todo.findById(id);
+  if (!todo) {
+    return NextResponse.json({ error: "Todo not found" }, { status: 404 });
+  }
+
+  if (text !== undefined) todo.text = text;
+  if (completed !== undefined) todo.completed = completed;
+  await todo.save();
+
   return NextResponse.json(todo);
 }
 
 export async function DELETE(request: NextRequest) {
   const session = await getServerSession(authOptions);
+  const { id } = await request.json();
+
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { id } = await request.json();
   await dbConnect();
-  await Todo.findOneAndDelete({ _id: id, user: session.user.email });
+  await Todo.findByIdAndDelete(id);
+
   return NextResponse.json({ message: "Todo deleted" });
 }

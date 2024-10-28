@@ -2,7 +2,7 @@
 
 import { useState, useEffect, SetStateAction } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
-import { Sun, Moon, Edit, Trash } from "lucide-react";
+import { Sun, Moon, Edit, Trash, Plus, Check } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 interface Todo {
@@ -43,8 +43,8 @@ export default function Home() {
   useEffect(() => {
     if (status === "authenticated") {
       fetchTodos();
+      moveLocalTodosToServer();
     } else if (status === "unauthenticated") {
-      // Keep local todos if any
       const localTodos = localStorage.getItem("localTodos");
       if (localTodos) {
         setTodos(JSON.parse(localTodos));
@@ -57,23 +57,42 @@ export default function Home() {
   const fetchTodos = async () => {
     try {
       const res = await fetch("/api/todos");
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to fetch todos");
+      }
       const data = await res.json();
       setTodos(data);
     } catch (error) {
       console.error("Failed to fetch todos:", error);
+      // Optionally show user-friendly error message
+    }
+  };
+
+  const moveLocalTodosToServer = async () => {
+    const localTodos = localStorage.getItem("localTodos");
+    if (localTodos) {
+      const todosToMove = JSON.parse(localTodos);
+      for (const todo of todosToMove) {
+        await fetch("/api/todos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(todo),
+        });
+      }
+      localStorage.removeItem("localTodos");
+      fetchTodos();
     }
   };
 
   const addTodo = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!newTodo.trim()) return;
-
     const todo = {
       text: newTodo,
       completed: false,
       createdAt: new Date().toISOString(),
     };
-
     if (status === "authenticated") {
       try {
         const res = await fetch("/api/todos", {
@@ -81,7 +100,6 @@ export default function Home() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(todo),
         });
-
         if (res.ok) {
           await fetchTodos();
         }
@@ -93,7 +111,6 @@ export default function Home() {
       setTodos(newTodos);
       localStorage.setItem("localTodos", JSON.stringify(newTodos));
     }
-
     setNewTodo("");
   };
 
@@ -105,7 +122,6 @@ export default function Home() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id, completed: !completed }),
         });
-
         if (res.ok) {
           await fetchTodos();
         }
@@ -129,7 +145,6 @@ export default function Home() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id }),
         });
-
         if (res.ok) {
           await fetchTodos();
         }
@@ -143,19 +158,42 @@ export default function Home() {
     }
   };
 
-  const clearAllTodos = async () => {
+  const clearAllTodos = async (block: string) => {
     if (status === "authenticated") {
       try {
-        const res = await fetch("/api/todos/clear", { method: "DELETE" });
-        if (res.ok) {
-          await fetchTodos();
+        const res = await fetch("/api/todos/clear", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ block }),
+        });
+
+        if (!res.ok) {
+          const errorData = await res.json();
+          throw new Error(errorData.error || "Failed to clear todos");
         }
+
+        // Add a small delay before fetching to ensure DB operations are complete
+        setTimeout(() => {
+          fetchTodos();
+        }, 100);
       } catch (error) {
         console.error("Failed to clear todos:", error);
+        // You might want to show an error message to the user here
       }
     } else {
-      setTodos([]);
-      localStorage.removeItem("localTodos");
+      // Handle local storage case
+      if (block === "all") {
+        setTodos([]);
+        localStorage.removeItem("localTodos");
+      } else {
+        // Clear only todos for the specific date
+        const newTodos = todos.filter((todo) => {
+          const todoDate = new Date(todo.createdAt).toDateString();
+          return todoDate !== block;
+        });
+        setTodos(newTodos);
+        localStorage.setItem("localTodos", JSON.stringify(newTodos));
+      }
     }
   };
 
@@ -204,6 +242,21 @@ export default function Home() {
     }
   };
 
+  const groupTodosByDate = (todos: Todo[]) => {
+    const grouped: { [key: string]: Todo[] } = {};
+    todos.forEach((todo) => {
+      const date = new Date(todo.createdAt);
+      const key = date.toDateString();
+      if (!grouped[key]) {
+        grouped[key] = [];
+      }
+      grouped[key].push(todo);
+    });
+    return grouped;
+  };
+
+  const groupedTodos = groupTodosByDate(todos);
+
   return (
     <main className={`min-h-screen bg-gray-100 dark:bg-gray-900 p-8 ${theme}`}>
       <div className="max-w-md mx-auto bg-white dark:bg-gray-800 rounded-lg shadow-md">
@@ -228,9 +281,12 @@ export default function Home() {
                 status === "authenticated" ? "bg-red-500" : "bg-blue-500"
               } text-white rounded`}
             >
-              {status === "authenticated"
-                ? "Log out"
-                : "Login to save progress"}
+              {status === "authenticated" ? (
+                "Log out"
+              ) : (
+                  <pre>{`Login to save progress
+or view your todos`}</pre>
+              )}
             </button>
           </div>
         </div>
@@ -239,7 +295,9 @@ export default function Home() {
             <input
               type="text"
               value={newTodo}
-              onChange={(e: { target: { value: SetStateAction<string>; }; }) => setNewTodo(e.target.value)}
+              onChange={(e: { target: { value: SetStateAction<string> } }) =>
+                setNewTodo(e.target.value)
+              }
               className="flex-grow px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white dark:border-gray-600"
               placeholder="Add a new task"
             />
@@ -250,67 +308,78 @@ export default function Home() {
               Add
             </button>
           </form>
-
-          <ul className="space-y-2">
-            {todos.map((todo) => (
-              <li key={todo._id} className="flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  checked={todo.completed}
-                  onChange={() => toggleTodo(todo._id, todo.completed)}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-                {editingTodo && editingTodo._id === todo._id ? (
-                  <input
-                    type="text"
-                    value={editText}
-                    onChange={(e: { target: { value: SetStateAction<string>; }; }) => setEditText(e.target.value)}
-                    className="flex-grow px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white dark:border-gray-600"
-                  />
-                ) : (
-                  <span
-                    className={`flex-grow ${
-                      todo.completed
-                        ? "line-through text-gray-500"
-                        : "text-gray-800 dark:text-white"
-                    }`}
-                  >
-                    {todo.text}
-                  </span>
-                )}
-                {editingTodo && editingTodo._id === todo._id ? (
-                  <button
-                    onClick={handleEditSubmit}
-                    className="p-1 bg-green-500 text-white rounded-md hover:bg-green-600"
-                  >
-                    Save
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => startEditing(todo)}
-                    className="p-1 bg-yellow-500 text-white rounded-md hover:bg-yellow-600"
-                  >
-                    <Edit className="h-4 w-4" />
-                  </button>
-                )}
-                <button
-                  onClick={() => deleteTodo(todo._id)}
-                  className="p-1 bg-red-500 text-white rounded-md hover:bg-red-600"
-                >
-                  <Trash className="h-4 w-4" />
-                </button>
-              </li>
-            ))}
-          </ul>
-
-          {todos.length > 0 && (
-            <button
-              onClick={clearAllTodos}
-              className="mt-4 px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500"
-            >
-              Clear All Todos
-            </button>
-          )}
+          {Object.keys(groupedTodos).map((date) => (
+            <div key={date} className="mb-4">
+              <h2 className="text-lg font-bold text-gray-800 dark:text-white">
+                {date}
+              </h2>
+              <ul className="space-y-2">
+                {groupedTodos[date].map((todo) => (
+                  <li key={todo._id} className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={todo.completed}
+                      onChange={() => toggleTodo(todo._id, todo.completed)}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    {editingTodo && editingTodo._id === todo._id ? (
+                      <input
+                        type="text"
+                        value={editText}
+                        onChange={(e: {
+                          target: { value: SetStateAction<string> };
+                        }) => setEditText(e.target.value)}
+                        className="flex-grow px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                      />
+                    ) : (
+                      <span
+                        className={`flex-grow ${
+                          todo.completed
+                            ? "line-through text-gray-500"
+                            : "text-gray-800 dark:text-white"
+                        }`}
+                      >
+                        {todo.text}
+                      </span>
+                    )}
+                    {editingTodo && editingTodo._id === todo._id ? (
+                      <button
+                        onClick={handleEditSubmit}
+                        className="p-1 bg-green-500 text-white rounded-md hover:bg-green-600"
+                      >
+                        Save
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => startEditing(todo)}
+                        className="p-1 bg-yellow-500 text-white rounded-md hover:bg-yellow-600"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => deleteTodo(todo._id)}
+                      className="p-1 bg-red-500 text-white rounded-md hover:bg-red-600"
+                    >
+                      <Trash className="h-4 w-4" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <button
+                onClick={() => clearAllTodos(date)}
+                className="mt-2 px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500"
+              >
+                Clear All Todos for {date}
+              </button>
+            </div>
+          ))}
+          <button
+            onClick={() => clearAllTodos("all")}
+            className="mt-4 px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500"
+          >
+            Clear All Todos
+          </button>
         </div>
       </div>
     </main>
