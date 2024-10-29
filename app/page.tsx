@@ -266,7 +266,7 @@ export default function Home() {
             </button>
           </div>
         </div>
-        <div className="p-4">
+        <div className="px-4">
           <form onSubmit={addTodo} className="flex space-x-2 mb-4">
             <input
               type="text"
