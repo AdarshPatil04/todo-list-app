@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, SetStateAction } from "react";
+import { useState, useEffect, SetStateAction, useCallback } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
-import { Sun, Moon, Edit, Trash, Plus, Check } from "lucide-react";
+import { Sun, Moon, Edit, Trash } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 interface Todo {
@@ -13,7 +13,7 @@ interface Todo {
 }
 
 export default function Home() {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const [todos, setTodos] = useState<Todo[]>([]);
   const [newTodo, setNewTodo] = useState("");
   const [theme, setTheme] = useState<"light" | "dark">("light");
@@ -40,36 +40,20 @@ export default function Home() {
     setTheme((prev) => (prev === "light" ? "dark" : "light"));
   };
 
-  useEffect(() => {
-    if (status === "authenticated") {
-      fetchTodos();
-      moveLocalTodosToServer();
-    } else if (status === "unauthenticated") {
-      const localTodos = localStorage.getItem("localTodos");
-      if (localTodos) {
-        setTodos(JSON.parse(localTodos));
-      } else {
-        setTodos([]);
-      }
-    }
-  }, [status]);
-
-  const fetchTodos = async () => {
+  const fetchTodos = useCallback(async () => {
     try {
       const res = await fetch("/api/todos");
       if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "Failed to fetch todos");
+        throw new Error("Failed to fetch todos");
       }
       const data = await res.json();
       setTodos(data);
     } catch (error) {
       console.error("Failed to fetch todos:", error);
-      // Optionally show user-friendly error message
     }
-  };
+  }, []);
 
-  const moveLocalTodosToServer = async () => {
+  const moveLocalTodosToServer = useCallback(async () => {
     const localTodos = localStorage.getItem("localTodos");
     if (localTodos) {
       const todosToMove = JSON.parse(localTodos);
@@ -83,7 +67,21 @@ export default function Home() {
       localStorage.removeItem("localTodos");
       fetchTodos();
     }
-  };
+  }, [fetchTodos]); // Add fetchTodos as a dependency
+
+  useEffect(() => {
+    if (status === "authenticated") {
+      fetchTodos();
+      moveLocalTodosToServer();
+    } else if (status === "unauthenticated") {
+      const localTodos = localStorage.getItem("localTodos");
+      if (localTodos) {
+        setTodos(JSON.parse(localTodos));
+      } else {
+        setTodos([]);
+      }
+    }
+  }, [status, moveLocalTodosToServer, fetchTodos]);
 
   const addTodo = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -166,34 +164,15 @@ export default function Home() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ block }),
         });
-
-        if (!res.ok) {
-          const errorData = await res.json();
-          throw new Error(errorData.error || "Failed to clear todos");
+        if (res.ok) {
+          await fetchTodos();
         }
-
-        // Add a small delay before fetching to ensure DB operations are complete
-        setTimeout(() => {
-          fetchTodos();
-        }, 100);
       } catch (error) {
         console.error("Failed to clear todos:", error);
-        // You might want to show an error message to the user here
       }
     } else {
-      // Handle local storage case
-      if (block === "all") {
-        setTodos([]);
-        localStorage.removeItem("localTodos");
-      } else {
-        // Clear only todos for the specific date
-        const newTodos = todos.filter((todo) => {
-          const todoDate = new Date(todo.createdAt).toDateString();
-          return todoDate !== block;
-        });
-        setTodos(newTodos);
-        localStorage.setItem("localTodos", JSON.stringify(newTodos));
-      }
+      setTodos([]);
+      localStorage.removeItem("localTodos");
     }
   };
 
@@ -281,12 +260,9 @@ export default function Home() {
                 status === "authenticated" ? "bg-red-500" : "bg-blue-500"
               } text-white rounded`}
             >
-              {status === "authenticated" ? (
-                "Log out"
-              ) : (
-                  <pre>{`Login to save progress
-or view your todos`}</pre>
-              )}
+              {status === "authenticated"
+                ? "Log out"
+                : "Login to save progress"}
             </button>
           </div>
         </div>

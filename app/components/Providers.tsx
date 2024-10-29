@@ -4,7 +4,7 @@
 import { SessionProvider } from "next-auth/react";
 import { CustomThemeProvider } from './CustomThemeProvider'; // Add this import
 
-const Providers = ({ children }: { children: React.ReactNode }) => {
+export const Providers = ({ children }: { children: React.ReactNode }) => {
   return (
     <SessionProvider>
       <CustomThemeProvider> {/* Use your custom theme provider */}
@@ -13,5 +13,3 @@ const Providers = ({ children }: { children: React.ReactNode }) => {
     </SessionProvider>
   );
 };
-
-export default Providers;

@@ -1,11 +1,11 @@
 // pages/api/todos/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "../auth/[...nextauth]/route";
-import dbConnect from "@/lib/dbConnect";
-import Todo from "@/models/Todo";
+import { authOptions } from "../../auth";
+import dbConnect from "../../../lib/dbConnect";
+import Todo from "../../../models/Todo";
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   const session = await getServerSession(authOptions);
 
   if (!session) {

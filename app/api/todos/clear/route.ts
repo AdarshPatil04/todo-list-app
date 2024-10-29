@@ -1,9 +1,9 @@
 // app/api/todos/clear/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "../../auth/[...nextauth]/route";
-import dbConnect from "@/lib/dbConnect";
-import Todo from "@/models/Todo";
+import { authOptions } from "../../../auth";
+import dbConnect from "../../../../lib/dbConnect";
+import Todo from "../../../../models/Todo";
 
 export async function DELETE(request: NextRequest) {
   const session = await getServerSession(authOptions);

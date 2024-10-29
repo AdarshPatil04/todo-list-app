@@ -5,8 +5,13 @@ interface GlobalMongoose {
   promise: Promise<typeof mongoose> | null;
 }
 
+// Modified global declaration to avoid using var
 declare global {
-  var mongoose: GlobalMongoose | undefined;
+  namespace NodeJS {
+    interface Global {
+      mongoose: GlobalMongoose | undefined;
+    }
+  }
 }
 
 const MONGODB_URI = process.env.MONGODB_URI as string;
@@ -18,13 +23,13 @@ if (!MONGODB_URI) {
 }
 
 // Define the cached variable using the interface
-const cached: GlobalMongoose = global.mongoose ?? {
+const cached: GlobalMongoose = (global as typeof global & { mongoose?: GlobalMongoose }).mongoose ?? {
   conn: null,
   promise: null,
 };
 
 // Set the global mongoose value
-global.mongoose = cached;
+(global as any).mongoose = cached;
 
 async function dbConnect() {
   if (cached.conn) {

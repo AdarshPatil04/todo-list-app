@@ -1,21 +1,21 @@
-import Providers  from "./components/Providers";
-import { cn } from "@/lib/utils";
+import { Providers } from "./components/Providers";
+import { Metadata } from "next";
 import "./globals.css";
+
+export const metadata: Metadata = {
+  title: "Todo List App",
+  description: "A simple todo list application built with Next.js",
+};
 
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
-}) {
+}): React.JSX.Element {
   return (
-    <html suppressHydrationWarning>
-      <body
-        suppressHydrationWarning
-        className={cn(
-          "min-h-screen bg-background font-sans antialiased",
-          "flex flex-col"
-        )}
-      >
+    <html lang="en" suppressHydrationWarning>
+      <head />
+      <body suppressHydrationWarning>
         <Providers>{children}</Providers>
       </body>
     </html>
